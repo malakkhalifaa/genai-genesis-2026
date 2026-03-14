@@ -11,6 +11,8 @@ export interface AnalyzeResult {
   reasons: string[];
   explanation: string;
   recommendedAction: string;
+  model_name?: string;
+  model_version?: string;
 }
 
 export interface UserContext {
@@ -141,7 +143,14 @@ async function callGemini(input: AnalyzeInput, behavioralHints: string[]): Promi
   for (const modelId of GEMINI_MODELS) {
     try {
       const text = await callGeminiWithModel(genAI, modelId, fullPrompt);
-      return parseStructuredResponse(text);
+      const parsed = parseStructuredResponse(text);
+
+      return {
+        ...parsed,
+        model_name: "gemini",
+        model_version: modelId
+      };
+
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       lastError = err instanceof Error ? err : new Error(message);
@@ -151,7 +160,12 @@ async function callGemini(input: AnalyzeInput, behavioralHints: string[]): Promi
         await new Promise((r) => setTimeout(r, waitMs));
         try {
           const text = await callGeminiWithModel(genAI, modelId, fullPrompt);
-          return parseStructuredResponse(text);
+          const parsed = parseStructuredResponse(text);
+          return {
+            ...parsed,
+            model_name: "gemini",
+            model_version: modelId
+          };
         } catch (retryErr) {
           lastError = retryErr instanceof Error ? retryErr : new Error(String(retryErr));
         }
@@ -180,7 +194,12 @@ async function callOpenAI(input: AnalyzeInput, behavioralHints: string[]): Promi
   });
   const text = completion.choices[0]?.message?.content;
   if (!text) throw new Error("OpenAI returned empty response");
-  return parseStructuredResponse(text);
+  const parsed = parseStructuredResponse(text);
+  return {
+    ...parsed,
+    model_name: "openai",
+    model_version: "gpt-4o-mini"
+  };
 }
 
 /**
