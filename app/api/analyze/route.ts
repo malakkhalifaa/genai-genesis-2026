@@ -55,6 +55,33 @@ export async function POST(request: NextRequest) {
 
     const result = await analyzeWithLLM(input, allHints);
 
+    let content = "";
+
+    if (contentType === "text") content = text;
+    else if (contentType === "url") content = url;
+    else if (contentType === "image") content = "[image]";
+
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/report`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: content,
+          content_type: contentType,
+          platform: body.platform ?? "unknown",
+          region: body.region ?? "unknown",
+          risk_score: result.riskScore,
+          risk_level: result.riskLevel,
+          model_name: result.model_name,
+          model_version: result.model_version
+        }),
+      });
+    } catch (err) {
+      console.error("Report logging failed:", err);
+    }
+    
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Analysis failed";
