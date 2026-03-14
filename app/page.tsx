@@ -44,7 +44,7 @@ export default function Home() {
   return (
     <main style={{ maxWidth: 600, margin: "2rem auto", padding: "0 1rem", fontFamily: "system-ui" }}>
       <h1>ScamShield — ML / Analyze</h1>
-      <p>Test the analyze API. Set <code>GEMINI_API_KEY</code> or <code>OPENAI_API_KEY</code> in <code>.env.local</code>.</p>
+      <p>Test the analyze API. Set one of these in <code>.env.local</code>: <code>WATSONX_AI_APIKEY</code> + <code>WATSONX_PROJECT_ID</code> (IBM), or <code>GEMINI_API_KEY</code>, or <code>OPENAI_API_KEY</code>.</p>
       <form onSubmit={handleSubmit}>
         <div>
           <label>
