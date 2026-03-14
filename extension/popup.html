@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <div class="shield-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <span class="title">ScamShield</span>
+        <span class="beta-badge">AI</span>
+      </div>
+      <div class="conn-wrap">
+        <span class="conn-dot" id="connDot"></span>
+        <span class="conn-label" id="connLabel">Connecting…</span>
+      </div>
+    </div>
+
+    <!-- API URL Config -->
+    <div class="config-row">
+      <input type="text" id="apiUrl" placeholder="http://localhost:3000" value="http://localhost:3000">
+      <button id="saveApiUrl" class="config-save">Save</button>
+    </div>
+
+    <!-- Persona Bar -->
+    <div class="persona-bar">
+      <div class="persona-info">
+        <span class="persona-avatar" id="personaAvatar">👵</span>
+        <div>
+          <div class="persona-name" id="personaName">Margaret, 72</div>
+          <div class="persona-role" id="personaRole">Retired Teacher</div>
+        </div>
+      </div>
+      <button id="switchPersona" class="switch-btn">Switch →</button>
+    </div>
+
+    <!-- Main Actions -->
+    <div class="actions">
+      <button id="analyzePage" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        Analyze This Page
+      </button>
+      <button id="analyzeSelection" class="btn btn-secondary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        </svg>
+        Analyze Selected Text
+      </button>
+    </div>
+
+    <!-- Divider -->
+    <div class="divider"><span>or paste text</span></div>
+
+    <!-- Manual Input -->
+    <div class="manual-section">
+      <textarea id="manualInput" placeholder="Paste suspicious message, email, or URL…"></textarea>
+      <button id="analyzeManual" class="btn btn-secondary full-width">Analyze Pasted Text</button>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <p>Watsonx analyzing…</p>
+    </div>
+
+    <!-- Results Area -->
+    <div id="results" class="results hidden">
+      <div class="risk-header" id="riskHeader">
+        <div>
+          <div class="risk-label" id="riskLabel">ANALYZING</div>
+          <div class="risk-sublabel" id="riskSublabel">Risk detected</div>
+        </div>
+        <div class="risk-score-wrap">
+          <span class="risk-score" id="riskScore">--</span>
+          <span class="risk-score-denom">/100</span>
+        </div>
+      </div>
+
+      <div class="explanation" id="explanation"></div>
+
+      <div class="reasons" id="reasons"></div>
+
+      <div class="action-box" id="actionBox"></div>
+
+      <button id="clearResults" class="btn btn-ghost full-width" style="margin-top:8px">Clear ✕</button>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <a href="#" id="openDashboard">Open Full Dashboard →</a>
+    </div>
+
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

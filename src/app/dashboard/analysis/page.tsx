@@ -1,17 +1,16 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { FileText, Link2, Mail, Image as ImageIcon, ScanSearch, Loader2, Copy, RotateCcw, ChevronDown } from 'lucide-react'
+import { FileText, Link2, Image as ImageIcon, ScanSearch, Loader2, Copy, RotateCcw, ChevronDown, Upload, X } from 'lucide-react'
 import { analyzeInput, normalizePersona, personas, quickTests, type AnalysisResult } from '@/lib/mockData'
 
-type InputMode = 'text' | 'link' | 'email' | 'screenshot'
+type InputMode = 'text' | 'link' | 'image'
 
 const inputModes: { id: InputMode; label: string; Icon: React.ComponentType<{ style?: React.CSSProperties }> }[] = [
-  { id: 'text',       label: 'Text',       Icon: FileText  },
-  { id: 'link',       label: 'URL',        Icon: Link2     },
-  { id: 'email',      label: 'Email',      Icon: Mail      },
-  { id: 'screenshot', label: 'Screenshot', Icon: ImageIcon },
+  { id: 'text',  label: 'Text',  Icon: FileText  },
+  { id: 'link',  label: 'URL',   Icon: Link2     },
+  { id: 'image', label: 'Photo', Icon: ImageIcon },
 ]
 
 const riskMeta = {
@@ -34,6 +33,8 @@ function AnalysisContent() {
   const persona     = personas[personaId]
   const sampleContent = useMemo(() => quickTests.find(q => q.id === sample)?.content ?? '', [sample])
 
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [mode,        setMode]        = useState<InputMode>('text')
   const [input,       setInput]       = useState(sampleContent)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -41,6 +42,29 @@ function AnalysisContent() {
   const [scoreView,   setScoreView]   = useState(0)
   const [stepIndex,   setStepIndex]   = useState(0)
   const [showRaw,     setShowRaw]     = useState(false)
+  const [imageBase64, setImageBase64] = useState<string | null>(null)
+  const [imagePreview,setImagePreview]= useState<string | null>(null)
+  const [imageName,   setImageName]   = useState('')
+  const [dragOver,    setDragOver]    = useState(false)
+
+  const handleImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return
+    setImageName(file.name)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string
+      setImagePreview(dataUrl)
+      setImageBase64(dataUrl.split(',')[1]) // strip data:...;base64, prefix
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const clearImage = () => {
+    setImageBase64(null)
+    setImagePreview(null)
+    setImageName('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
 
   useEffect(() => {
     if (!result) return
@@ -61,14 +85,87 @@ function AnalysisContent() {
   }, [isAnalyzing])
 
   const runAnalysis = async () => {
-    const text = (input || sampleContent).trim()
-    if (!text) return
+    const text = mode !== 'image' ? (input || sampleContent).trim() : ''
+    if (mode !== 'image' && !text) return
+    if (mode === 'image' && !imageBase64) return
     setIsAnalyzing(true)
     setResult(null)
     setScoreView(0)
     setStepIndex(0)
-    await new Promise(r => setTimeout(r, 1400))
-    setResult(analyzeInput(personaId, text))
+
+    // Build userContext per persona
+    const userContextMap: Record<string, object | null> = {
+      margaret: {
+        neverUsedCrypto: true,
+        neverSentGiftCards: true,
+        typicalContacts: ['family', 'church group', 'Amazon', 'TD Bank'],
+        knownDomains: ['amazon.com', 'td.com', 'canada.ca'],
+      },
+      ahmed: {
+        neverUsedCrypto: false,
+        neverSentGiftCards: true,
+        typicalContacts: ['university', 'landlord', 'classmates'],
+        knownDomains: ['indeed.com', 'linkedin.com'],
+      },
+      none: null,
+    }
+
+    // Map UI mode to API contentType
+    const contentTypeMap: Record<InputMode, 'text' | 'url' | 'image'> = {
+      text: 'text',
+      link: 'url',
+      image: 'image',
+    }
+
+    try {
+      const body: Record<string, unknown> = {
+        contentType: contentTypeMap[mode],
+        userContext: userContextMap[personaId] ?? null,
+      }
+      if (mode === 'image') {
+        body.imageBase64 = imageBase64
+      } else if (mode === 'link') {
+        body.url = text
+      } else {
+        body.text = text
+      }
+
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        // Map API response → frontend AnalysisResult shape
+        const levelMap: Record<string, AnalysisResult['riskLabel']> = {
+          low: 'LOW RISK',
+          medium: 'MEDIUM RISK',
+          high: 'HIGH RISK',
+          critical: 'HIGH RISK',
+        }
+        setResult({
+          riskLabel: levelMap[data.riskLevel] ?? 'MEDIUM RISK',
+          riskScore: typeof data.riskScore === 'number' ? data.riskScore : 50,
+          reason: data.explanation ?? '',
+          tags: Array.isArray(data.reasons) ? data.reasons : [],
+          action: data.recommendedAction ?? '',
+        })
+        setIsAnalyzing(false)
+        return
+      }
+    } catch {
+      // fall through to mock
+    }
+
+    // Fallback to mock if API fails (image mode returns a generic fallback)
+    await new Promise(r => setTimeout(r, 800))
+    if (mode === 'image') {
+      setResult({ riskLabel: 'MEDIUM RISK', riskScore: 50, reason: 'Could not analyze image — API unavailable. Please try again.', tags: ['Analysis failed'], action: 'Try pasting the text content manually.' })
+    } else {
+      setResult(analyzeInput(personaId, text))
+    }
     setIsAnalyzing(false)
   }
 
@@ -124,53 +221,117 @@ function AnalysisContent() {
 
           {/* Input mode tabs */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4,
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6,
             marginBottom: 14,
           }}>
             {inputModes.map(({ id, label, Icon }) => (
               <button
                 key={id}
-                onClick={() => setMode(id)}
+                onClick={() => { setMode(id); setInput(''); clearImage() }}
                 style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  gap: 4, padding: '8px 4px', borderRadius: 8,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 6, padding: '9px 8px', borderRadius: 8,
                   border: '1px solid ' + (mode === id ? 'var(--accent-border)' : 'var(--border)'),
                   background: mode === id ? 'var(--accent-soft)' : 'transparent',
                   color: mode === id ? 'var(--accent)' : 'var(--text-2)',
-                  fontSize: 10, fontWeight: 500,
+                  fontSize: 13, fontWeight: 600,
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >
-                <Icon style={{ width: 13, height: 13 }} />
+                <Icon style={{ width: 14, height: 14 }} />
                 {label}
               </button>
             ))}
           </div>
 
-          {/* Textarea */}
-          <textarea
-            value={input || sampleContent}
-            onChange={e => setInput(e.target.value)}
-            placeholder={`Paste ${mode} content to analyze…`}
-            rows={8}
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              background: 'var(--bg)',
-              color: 'var(--text)',
-              fontSize: 13, lineHeight: 1.6,
-              padding: '10px 12px',
-              resize: 'vertical',
-              outline: 'none',
-              fontFamily: 'inherit',
-            }}
-          />
+          {/* Text / URL textarea */}
+          {mode !== 'image' && (
+            <textarea
+              value={input || sampleContent}
+              onChange={e => setInput(e.target.value)}
+              placeholder={mode === 'link'
+                ? 'https://suspicious-site.com/…'
+                : 'Paste suspicious message, email, DM, or conversation…'}
+              rows={8}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                fontSize: 13, lineHeight: 1.6,
+                padding: '10px 12px',
+                resize: 'vertical',
+                outline: 'none',
+                fontFamily: 'inherit',
+              }}
+            />
+          )}
+
+          {/* Image upload */}
+          {mode === 'image' && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f) }}
+              />
+
+              {!imagePreview ? (
+                <div
+                  onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={e => {
+                    e.preventDefault(); setDragOver(false)
+                    const f = e.dataTransfer.files[0]; if (f) handleImageFile(f)
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 8,
+                    background: dragOver ? 'var(--accent-soft)' : 'var(--bg)',
+                    padding: '32px 16px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    minHeight: 160,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center', gap: 8,
+                  }}
+                >
+                  <Upload style={{ width: 24, height: 24, color: 'var(--text-3)' }} />
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>Drop screenshot here</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>or click to upload · PNG, JPG, WEBP</div>
+                </div>
+              ) : (
+                <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={imagePreview} alt={imageName} style={{ width: '100%', display: 'block', maxHeight: 220, objectFit: 'contain', background: 'var(--bg)' }} />
+                  <div style={{
+                    position: 'absolute', bottom: 0, left: 0, right: 0,
+                    padding: '6px 10px',
+                    background: 'rgba(0,0,0,0.55)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  }}>
+                    <span style={{ fontSize: 11, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{imageName}</span>
+                    <button
+                      onClick={clearImage}
+                      style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 4, cursor: 'pointer', padding: '2px 6px', color: '#fff', display: 'flex', alignItems: 'center' }}
+                    >
+                      <X style={{ width: 12, height: 12 }} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
           {/* Analyze button */}
           <button
             onClick={runAnalysis}
-            disabled={isAnalyzing}
+            disabled={isAnalyzing || (mode === 'image' && !imageBase64)}
             style={{
               width: '100%', marginTop: 10,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -188,27 +349,31 @@ function AnalysisContent() {
               : <><ScanSearch style={{ width: 14, height: 14 }} /> Analyze</>}
           </button>
 
-          {/* Divider + quick tests */}
-          <div style={{ height: 1, background: 'var(--border)', margin: '16px 0 12px' }} />
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
-            Quick Tests
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {quickTests.map(qt => (
-              <button
-                key={qt.id}
-                onClick={() => setInput(qt.content)}
-                style={{
-                  textAlign: 'left', padding: '7px 10px', borderRadius: 6,
-                  border: '1px solid var(--border)',
-                  background: 'transparent', color: 'var(--text-2)',
-                  fontSize: 12, cursor: 'pointer', transition: 'all 0.15s',
-                }}
-              >
-                {qt.label}
-              </button>
-            ))}
-          </div>
+          {/* Divider + quick tests — text/url only */}
+          {mode === 'image' ? null : <div style={{ height: 1, background: 'var(--border)', margin: '16px 0 12px' }} />}
+          {mode !== 'image' && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+                Quick Tests
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {quickTests.map(qt => (
+                  <button
+                    key={qt.id}
+                    onClick={() => setInput(qt.content)}
+                    style={{
+                      textAlign: 'left', padding: '7px 10px', borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      background: 'transparent', color: 'var(--text-2)',
+                      fontSize: 12, cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                  >
+                    {qt.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
