@@ -1,4 +1,4 @@
-# ScamShield — AI Personal Fraud Guardian
+# ScamShield: AI Personal Fraud Guardian
 
 **GenAI Genesis Hackathon · Social Impact Category**
 
