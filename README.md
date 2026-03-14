@@ -8,6 +8,7 @@ An AI that learns your behavior and protects you across **messages, websites, em
 
 ## Table of Contents
 
+- [How to use](#how-to-use)
 - [Vision & Impact](#vision--impact)
 - [Core Concept](#core-concept)
 - [Demo Use Cases (4 Scenarios)](#demo-use-cases-4-scenarios)
@@ -18,6 +19,61 @@ An AI that learns your behavior and protects you across **messages, websites, em
 - [Team & Task Split (4 People)](#team--task-split-4-people)
 - [Demo Plan](#demo-plan)
 - [References](#references)
+
+---
+
+## How to use
+
+This section walks you through running ScamShield and testing the scam analyzer.
+
+### 1. Get an API key (one-time)
+
+The analyzer needs a **Gemini** or **OpenAI** API key.
+
+- **Gemini (free tier):** Go to [Google AI Studio](https://aistudio.google.com/) → sign in → **Get API key** / **Create API key** → copy the key.
+- **OpenAI:** Go to [OpenAI API keys](https://platform.openai.com/api-keys) → create a key and copy it.
+
+### 2. Install and configure
+
+In the project folder:
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+Open **`.env.local`** and set **one** of these (replace with your real key):
+
+- `GEMINI_API_KEY=your_key_here`
+- or `OPENAI_API_KEY=your_key_here`
+
+Do **not** commit `.env.local` or share your key; it is ignored by git.
+
+### 3. Run the app
+
+```bash
+npm run dev
+```
+
+When it says "Ready", open a browser and go to: **http://localhost:3000**.
+
+### 4. Test the analyzer
+
+- Choose **Text** or **URL**.
+- Paste a message or a link (e.g. a suspicious text or a known scam example).
+- Click **Analyze**.
+
+You'll see a **risk level** (low/medium/high/critical), a **score** (0–100), **reasons**, a short **explanation**, and a **recommended action**. Try a normal greeting vs. a scammy message to see the difference.
+
+### 5. Optional: call the API directly
+
+With the app running, you can call the analyze API from another terminal or from code:
+
+```bash
+curl -X POST http://localhost:3000/api/analyze -H "Content-Type: application/json" -d "{\"contentType\":\"text\",\"text\":\"Send your verification code now to unlock your account\"}"
+```
+
+Response includes `riskLevel`, `riskScore`, `reasons`, `explanation`, and `recommendedAction`.
 
 ---
 
@@ -163,7 +219,7 @@ fraud-detection/
 
 1. **Clone and install**
    ```bash
-   cd fraud-detection
+   cd genai-genesis-2026   # or your repo folder name
    npm install
    cp .env.example .env.local
    ```

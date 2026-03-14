@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Env (never commit real API keys)
+.env
+.env.local
+.env.*.local
+
+# Next.js
+.next/
+out/
+
+# Build / IDE
+dist/
+*.tsbuildinfo
+.vercel
+.idea
+.vscode
+*.log
+.DS_Store
