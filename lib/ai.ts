@@ -38,7 +38,7 @@ const STRUCTURED_PROMPT = `You are a fraud and scam detection assistant for vuln
 
 Consider these scam patterns: urgency or pressure, impersonation (bank/CRA/support), requests for verification codes or passwords, money transfers, crypto or gift card requests, fake job offers with unrealistic pay, phishing links, too-good-to-be-true offers.
 
-Respond ONLY with valid JSON, no markdown or extra text.`;
+Respond with exactly one JSON object. No markdown, no code blocks, no text before or after, no bullet points. Example: {"riskLevel":"low","riskScore":5,"reasons":[],"explanation":"...","recommendedAction":"..."}`;
 
 function buildContentPrompt(input: AnalyzeInput, behavioralHints: string[]): string {
   const parts: string[] = [];
@@ -72,8 +72,26 @@ function buildContentPrompt(input: AnalyzeInput, behavioralHints: string[]): str
 }
 
 function parseStructuredResponse(raw: string): AnalyzeResult {
-  const cleaned = raw.replace(/^```json\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-  const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+  let cleaned = raw.replace(/^```json\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  // Extract first {...} in case the model added text before/after
+  const brace = cleaned.indexOf("{");
+  if (brace >= 0) {
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (lastBrace > brace) cleaned = cleaned.slice(brace, lastBrace + 1);
+  }
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(cleaned) as Record<string, unknown>;
+  } catch {
+    // Model returned non-JSON; return a safe default with the raw text as explanation
+    return {
+      riskLevel: "medium",
+      riskScore: 50,
+      reasons: ["Could not parse model response as JSON"],
+      explanation: raw.slice(0, 500) || "No explanation provided.",
+      recommendedAction: "Be cautious and verify through official channels.",
+    };
+  }
 
   const riskLevel = ["low", "medium", "high", "critical"].includes(String(parsed.riskLevel))
     ? (parsed.riskLevel as RiskLevel)
@@ -166,18 +184,52 @@ async function callOpenAI(input: AnalyzeInput, behavioralHints: string[]): Promi
 }
 
 /**
- * Run LLM scam detection. Uses Gemini if GEMINI_API_KEY is set, else OpenAI.
+ * Watsonx.ai (IBM) — for IBM prize. Uses Granite or other watsonx model.
+ * Required in .env.local: WATSONX_AI_AUTH_TYPE=iam, WATSONX_AI_APIKEY, WATSONX_PROJECT_ID.
+ */
+async function callWatsonx(input: AnalyzeInput, behavioralHints: string[]): Promise<AnalyzeResult> {
+  const projectId = process.env.WATSONX_PROJECT_ID;
+  if (!process.env.WATSONX_AI_APIKEY || !projectId) {
+    throw new Error("WATSONX_AI_APIKEY and WATSONX_PROJECT_ID are required for Watsonx. Set WATSONX_AI_AUTH_TYPE=iam for API key auth.");
+  }
+
+  const contentPrompt = buildContentPrompt(input, behavioralHints);
+  const fullPrompt = STRUCTURED_PROMPT + "\n\n" + contentPrompt;
+
+  const modelId = process.env.WATSONX_MODEL_ID ?? "ibm/granite-3-8b-instruct";
+
+  const { WatsonXAI } = await import("@ibm-cloud/watsonx-ai");
+  const watsonx = WatsonXAI.newInstance({
+    version: "2024-05-31",
+    serviceUrl: process.env.WATSONX_SERVICE_URL ?? "https://us-south.ml.cloud.ibm.com",
+  });
+  const result = await watsonx.generateText({
+    input: fullPrompt,
+    modelId,
+    projectId,
+    parameters: { max_new_tokens: 1024, temperature: 0.2 },
+  });
+  const text = (result as { result?: { results?: Array<{ generated_text?: string }> } }).result?.results?.[0]?.generated_text ?? "";
+  if (!text) throw new Error("Watsonx returned empty response");
+  return parseStructuredResponse(text);
+}
+
+/**
+ * Run LLM scam detection. Priority: Watsonx (IBM) > Gemini > OpenAI.
  * Merges behavioral hints from lib/behavioral into the prompt.
  */
 export async function analyzeWithLLM(
   input: AnalyzeInput,
   behavioralHints: string[] = []
 ): Promise<AnalyzeResult> {
+  if (process.env.WATSONX_AI_APIKEY && process.env.WATSONX_PROJECT_ID) {
+    return callWatsonx(input, behavioralHints);
+  }
   if (process.env.GEMINI_API_KEY) {
     return callGemini(input, behavioralHints);
   }
   if (process.env.OPENAI_API_KEY) {
     return callOpenAI(input, behavioralHints);
   }
-  throw new Error("Set GEMINI_API_KEY or OPENAI_API_KEY in environment.");
+  throw new Error("Set WATSONX_AI_APIKEY+WATSONX_PROJECT_ID, GEMINI_API_KEY, or OPENAI_API_KEY in environment.");
 }
