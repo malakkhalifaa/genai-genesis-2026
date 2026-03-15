@@ -6,6 +6,7 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const {
+      user_id,        
       content,
       content_type,
       platform,
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
       user_feedback
     } = body;
 
-    // Determine corrected label automatically, UPDATE THIS BASED ON FRONT-END MESSAGE
+    // Determine corrected label automatically
     let corrected_label = null;
 
     if (user_feedback === "legit") {
@@ -25,12 +26,19 @@ export async function POST(req: Request) {
     } else if (user_feedback === "scam") {
       corrected_label = "scam";
     }
-    
+
+    if (!content) {
+    return NextResponse.json(
+        { error: "Content is required" },
+        { status: 400 }
+    );
+    }
 
     const { data, error } = await supabase
       .from("reports")
       .insert([
         {
+          user_id,   
           content,
           content_type,
           platform,

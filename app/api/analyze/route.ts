@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { analyzeWithLLM } from "../../../lib/ai";
 import { getBehavioralHints } from "../../../lib/behavioral";
 import { getPhishingHintLines } from "../../../lib/phishing";
+import { getUserContext } from "@/lib/userContext";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +17,8 @@ export async function POST(request: NextRequest) {
     const text = body.text ?? "";
     const url = body.url ?? "";
     const imageBase64 = body.imageBase64;
-    const userContext = body.userContext ?? null;
+    const userId = body.userId;
+    let userContext = body.userContext ?? null;
 
     if (contentType === "text" && !text && !url) {
       return NextResponse.json(
@@ -35,6 +37,9 @@ export async function POST(request: NextRequest) {
         { error: "Missing imageBase64 for contentType 'image'" },
         { status: 400 }
       );
+    }
+    if (userId) {
+      userContext = await getUserContext(userId);
     }
 
     const input = {
