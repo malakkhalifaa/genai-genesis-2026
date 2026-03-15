@@ -2,6 +2,7 @@
  * ScamShield — LLM-based scam detection and explainability.
  * Supports Gemini (primary) and OpenAI (fallback). Returns structured risk + reasons + explanation.
  */
+import { supabase } from "@/lib/db";
 
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
@@ -13,6 +14,7 @@ export interface AnalyzeResult {
   recommendedAction: string;
   model_name?: string;
   model_version?: string;
+  personalizedSignals?: string[]; 
 }
 
 export interface UserContext {
@@ -31,19 +33,84 @@ export interface AnalyzeInput {
   userContext?: UserContext;
 }
 
+const KEYWORD_CATEGORIES = {
+  crypto: ["crypto", "bitcoin", "btc", "eth", "wallet"],
+  bank: ["bank", "account", "transfer", "verify", "login"],
+  giftcard: ["gift card", "itunes", "steam", "apple card"],
+  job: ["job", "salary", "remote job", "work from home"],
+  delivery: ["package", "delivery", "shipment", "tracking"],
+};
+
 const STRUCTURED_PROMPT = `You are a fraud and scam detection assistant for vulnerable users (seniors, immigrants, first-time internet users). Your job is to analyze content and return a JSON object with:
 - riskLevel: one of "low", "medium", "high", "critical"
 - riskScore: number 0-100 (0 = safe, 100 = definite scam)
 - reasons: array of short reason strings (e.g. "Urgency language", "Bank impersonation", "Requests verification code")
 - explanation: 1-3 sentences in plain language (no jargon) explaining the risk to the user
 - recommendedAction: one short sentence (e.g. "Do not reply or click. Contact your bank via official website.")
+- personalizedSignals: array (max 2) of short statements explaining which user behavior signals influenced the decision (e.g. "This domain appears in the user's knownDomains list"), (optional).
 
 Consider these scam patterns: urgency or pressure, impersonation (bank/CRA/support), requests for verification codes or passwords, money transfers, crypto or gift card requests, fake job offers with unrealistic pay, phishing links, too-good-to-be-true offers.
 
-Respond with exactly one JSON object. No markdown, no code blocks, no text before or after, no bullet points. Example: {"riskLevel":"low","riskScore":5,"reasons":[],"explanation":"...","recommendedAction":"..."}`;
+Respond with exactly one JSON object. No markdown, no code blocks, no text before or after, no bullet points. Example: {"riskLevel":"low","riskScore":5,"reasons":[],"explanation":"...","personalized_signals":"[]",recommendedAction":"..."}`;
 
-function buildContentPrompt(input: AnalyzeInput, behavioralHints: string[]): string {
+function detectCategory(content: string): keyof typeof KEYWORD_CATEGORIES | null {
+  const lower = content.toLowerCase();
+
+  for (const [category, keywords] of Object.entries(KEYWORD_CATEGORIES)) {
+    for (const word of keywords) {
+      if (lower.includes(word)) {
+        return category as keyof typeof KEYWORD_CATEGORIES;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function getRelevantExamples(content: string, limit = 3) {
+
+  const category = detectCategory(content);
+
+  let query = supabase
+    .from("reports")
+    .select("content, corrected_label")
+    .eq("model_mistake", true);
+
+  if (category) {
+    const keywords: string[] = KEYWORD_CATEGORIES[category];
+
+    query = query.or(
+      keywords.map(k => `content.ilike.%${k}%`).join(",")
+    );
+  }
+
+  const { data, error } = await query.limit(limit);
+
+  if (error || !data) return [];
+
+  return data;
+}
+
+function buildContentPrompt(input: AnalyzeInput, behavioralHints: string[], fewShotExamples: any[]): string {
   const parts: string[] = [];
+
+  // Few-shot learning examples
+  if (fewShotExamples.length > 0) {
+    const exampleLines: string[] = [
+      "Examples of previously labeled messages:"
+    ];
+
+    fewShotExamples.forEach((ex, i) => {
+      exampleLines.push(
+        `Example ${i + 1}:`,
+        `Message: ${ex.content.slice(0,200)}`,
+        `Label: ${ex.corrected_label}`,
+        ""
+      );
+    });
+
+    parts.push(exampleLines.join("\n"));
+  }
 
   if (input.contentType === "text" && input.text) {
     parts.push("Content to analyze (text):\n" + input.text);
@@ -98,12 +165,22 @@ function parseStructuredResponse(raw: string): AnalyzeResult {
   const riskLevel = ["low", "medium", "high", "critical"].includes(String(parsed.riskLevel))
     ? (parsed.riskLevel as RiskLevel)
     : "medium";
+
   const riskScore = Math.min(100, Math.max(0, Number(parsed.riskScore) ?? 50));
+
   const reasons = Array.isArray(parsed.reasons)
     ? (parsed.reasons as string[]).filter(Boolean)
     : [];
+
+  const personalizedSignals = Array.isArray(parsed.personalizedSignals)
+    ? (parsed.personalizedSignals as string[]).filter(Boolean)
+    : [];
+
   const explanation = String(parsed.explanation ?? "No explanation provided.");
-  const recommendedAction = String(parsed.recommendedAction ?? "Be cautious and verify through official channels.");
+
+  const recommendedAction = String(
+    parsed.recommendedAction ?? "Be cautious and verify through official channels."
+  );
 
   return {
     riskLevel,
@@ -111,6 +188,7 @@ function parseStructuredResponse(raw: string): AnalyzeResult {
     reasons,
     explanation,
     recommendedAction,
+    personalizedSignals
   };
 }
 
@@ -136,7 +214,13 @@ async function callGemini(input: AnalyzeInput, behavioralHints: string[]): Promi
 
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
-  const contentPrompt = buildContentPrompt(input, behavioralHints);
+  const content = input.text || input.url || "";
+  const fewShotExamples = await getRelevantExamples(content, 3);
+  const contentPrompt = buildContentPrompt(
+    input,
+    behavioralHints,
+    fewShotExamples
+  );
   const fullPrompt = STRUCTURED_PROMPT + "\n\n" + contentPrompt;
 
   let lastError: Error | null = null;
@@ -182,7 +266,13 @@ async function callOpenAI(input: AnalyzeInput, behavioralHints: string[]): Promi
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
 
-  const contentPrompt = buildContentPrompt(input, behavioralHints);
+  const content = input.text || input.url || "";
+  const fewShotExamples = await getRelevantExamples(content, 3);
+  const contentPrompt = buildContentPrompt(
+    input,
+    behavioralHints,
+    fewShotExamples
+  );
   const fullPrompt = STRUCTURED_PROMPT + "\n\n" + contentPrompt;
 
   const OpenAI = (await import("openai")).default;
@@ -211,8 +301,13 @@ async function callWatsonx(input: AnalyzeInput, behavioralHints: string[]): Prom
   if (!process.env.WATSONX_AI_APIKEY || !projectId) {
     throw new Error("WATSONX_AI_APIKEY and WATSONX_PROJECT_ID are required for Watsonx. Set WATSONX_AI_AUTH_TYPE=iam for API key auth.");
   }
-
-  const contentPrompt = buildContentPrompt(input, behavioralHints);
+  const content = input.text || input.url || "";
+  const fewShotExamples = await getRelevantExamples(content, 3);
+  const contentPrompt = buildContentPrompt(
+    input,
+    behavioralHints,
+    fewShotExamples
+  );
   const fullPrompt = STRUCTURED_PROMPT + "\n\n" + contentPrompt;
 
   const modelId = process.env.WATSONX_MODEL_ID ?? "ibm/granite-3-8b-instruct";

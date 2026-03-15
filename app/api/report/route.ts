@@ -27,6 +27,16 @@ export async function POST(req: Request) {
       corrected_label = "scam";
     }
 
+    let model_mistake = false;
+
+    if (corrected_label === "not_scam" && risk_score >= 50) {
+        model_mistake = true;
+    }
+
+    if (corrected_label === "scam" && risk_score < 50) {
+        model_mistake = true;
+    }
+
     if (!content) {
     return NextResponse.json(
         { error: "Content is required" },
@@ -48,7 +58,8 @@ export async function POST(req: Request) {
           model_name,
           model_version,
           user_feedback,
-          corrected_label
+          corrected_label, 
+          model_mistake
         }
       ]);
 
