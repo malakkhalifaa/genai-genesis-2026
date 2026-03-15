@@ -54,7 +54,7 @@ export default function LandingPage() {
           <ShieldCheck style={{ width: 20, height: 20, color: '#ef4444' }} aria-hidden="true" />
           <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.02em' }}>ScamShield</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <a href="#how-it-works"
             style={{ fontSize: 14, color: '#9ca3af', textDecoration: 'none' }}>
             How it works
@@ -63,6 +63,16 @@ export default function LandingPage() {
             style={{ fontSize: 14, color: '#9ca3af', textDecoration: 'none' }}>
             See demo
           </a>
+          <Link href="/extension" style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)',
+            background: 'rgba(255,255,255,0.05)',
+            padding: '8px 16px',
+            fontSize: 14, fontWeight: 600, color: '#d1d5db', textDecoration: 'none',
+            transition: 'all 0.15s',
+          }}>
+            ⬇ Extension
+          </Link>
           <Link href="/login" style={{
             borderRadius: 8, background: '#dc2626', padding: '9px 20px',
             fontSize: 14, fontWeight: 600, color: '#fff', textDecoration: 'none',
@@ -168,6 +178,16 @@ export default function LandingPage() {
               letterSpacing: '-0.01em',
             }}>
               Try the Demo <ArrowRight style={{ width: 18, height: 18 }} aria-hidden="true" />
+            </Link>
+            <Link href="/extension" style={{
+              display: 'inline-flex', alignItems: 'center', gap: 10,
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.2)',
+              background: 'rgba(255,255,255,0.06)',
+              padding: '17px 32px',
+              fontSize: 17, fontWeight: 600, color: '#e5e7eb', textDecoration: 'none',
+            }}>
+              ⬇ Download Extension
             </Link>
             <a href="#how-it-works" style={{
               display: 'inline-flex', alignItems: 'center',

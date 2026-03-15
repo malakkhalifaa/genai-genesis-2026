@@ -1,5 +1,5 @@
 // ── Config ────────────────────────────────────────────────────────────────────
-const DEFAULT_API = 'http://localhost:3000'
+const DEFAULT_API = 'https://demo-sigma-nine-38.vercel.app'
 let apiBase = DEFAULT_API
 
 // ── Personas — match the app's mock data exactly ─────────────────────────────

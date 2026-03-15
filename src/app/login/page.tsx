@@ -327,23 +327,9 @@ function LoginContent() {
                     {loading ? 'Creating account…' : 'Create Account'}
                   </button>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
-                    <span style={{ fontSize: 12, color: '#9ca3af' }}>or</span>
-                    <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
-                  </div>
-
-                  <button
-                    onClick={() => setShowFace(true)}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                      padding: '11px 16px', borderRadius: 10, border: '1.5px solid #e5e7eb',
-                      background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#374151',
-                    }}
-                  >
-                    <span style={{ fontSize: 20 }}>📸</span>
-                    Enroll Face ID
-                  </button>
+                  <p style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', margin: 0 }}>
+                    👁️ Face ID can be enrolled from your profile after signing in.
+                  </p>
                 </div>
               )}
 

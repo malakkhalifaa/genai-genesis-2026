@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     if (userId && supabase) {
       const { data: profile } = await supabase
         .from('users')
-        .select('name, never_used_crypto, never_sent_giftcards, known_domains, trusted_contacts')
+        .select('*')
         .eq('id', userId)
         .maybeSingle()
       if (profile) {

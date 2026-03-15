@@ -11,6 +11,7 @@
   ],
   "host_permissions": [
     "http://localhost:3000/*",
+    "https://demo-sigma-nine-38.vercel.app/*",
     "https://*/*"
   ],
   "action": {
