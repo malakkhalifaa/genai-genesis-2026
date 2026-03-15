@@ -67,12 +67,13 @@ export async function POST(request: NextRequest) {
     else if (contentType === "image") content = "[image]";
 
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/report`, {
+      await fetch("/api/report", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          user_id: userId,  
           content: content,
           content_type: contentType,
           platform: body.platform ?? "unknown",

@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/db";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    console.log("REPORT BODY:", body);
 
     const {
-      user_id,        
+      user_id,
       content,
       content_type,
       platform,
@@ -18,8 +24,22 @@ export async function POST(req: Request) {
       user_feedback
     } = body;
 
-    // Determine corrected label automatically
-    let corrected_label = null;
+    if (!user_id) {
+      return NextResponse.json(
+        { error: "Missing user_id" },
+        { status: 400 }
+      );
+    }
+
+    if (!content) {
+      return NextResponse.json(
+        { error: "Content is required" },
+        { status: 400 }
+      );
+    }
+
+    // Determine corrected label
+    let corrected_label: string | null = null;
 
     if (user_feedback === "legit") {
       corrected_label = "not_scam";
@@ -30,25 +50,18 @@ export async function POST(req: Request) {
     let model_mistake = false;
 
     if (corrected_label === "not_scam" && risk_score >= 50) {
-        model_mistake = true;
+      model_mistake = true;
     }
 
     if (corrected_label === "scam" && risk_score < 50) {
-        model_mistake = true;
-    }
-
-    if (!content) {
-    return NextResponse.json(
-        { error: "Content is required" },
-        { status: 400 }
-    );
+      model_mistake = true;
     }
 
     const { data, error } = await supabase
       .from("reports")
       .insert([
         {
-          user_id,   
+          user_id,
           content,
           content_type,
           platform,
@@ -58,17 +71,21 @@ export async function POST(req: Request) {
           model_name,
           model_version,
           user_feedback,
-          corrected_label, 
+          corrected_label,
           model_mistake
         }
       ]);
 
     if (error) {
+      console.error("Supabase insert error:", error);
+
       return NextResponse.json(
         { error: error.message },
         { status: 500 }
       );
     }
+
+    console.log("Report stored successfully");
 
     return NextResponse.json({
       message: "Report stored successfully",
@@ -76,6 +93,8 @@ export async function POST(req: Request) {
     });
 
   } catch (err) {
+    console.error("Report route error:", err);
+
     return NextResponse.json(
       { error: "Invalid request" },
       { status: 400 }
