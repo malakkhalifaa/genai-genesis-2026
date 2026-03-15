@@ -5,30 +5,50 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import {
   ShieldCheck, BarChart3, Clock3, UserRound,
-  Settings, LogOut, Sun, Moon, Bell, HelpCircle,
+  Settings, LogOut, Sun, Moon, Bell, HelpCircle, Mic,
 } from 'lucide-react'
 import { normalizePersona, personas } from '@/lib/mockData'
+import { useLanguage } from '@/hooks/useLanguage'
 
 type Theme = 'dark' | 'light'
 
-const navItems = [
-  { href: '/dashboard/analysis', label: 'Analysis', Icon: BarChart3 },
-  { href: '/dashboard/history',  label: 'History',  Icon: Clock3 },
-  { href: '/dashboard/profile',  label: 'Profile',  Icon: UserRound },
+// Labels are injected at render time from t.nav so this is just icons + hrefs
+const NAV_ITEMS = [
+  { href: '/dashboard/analysis',  key: 'analysis'  as const, Icon: BarChart3  },
+  { href: '/dashboard/live-call', key: 'liveCall'  as const, Icon: Mic        },
+  { href: '/dashboard/history',   key: 'history'   as const, Icon: Clock3     },
+  { href: '/dashboard/profile',   key: 'profile'   as const, Icon: UserRound  },
 ]
 
 // ── needs Suspense (uses useSearchParams) ────────────────────────────────────
 function PersonaNavContent() {
-  const pathname    = usePathname()
+  const pathname     = usePathname()
   const searchParams = useSearchParams()
-  const personaId   = normalizePersona(searchParams.get('persona'))
-  const persona     = personas[personaId]
+  const personaId    = normalizePersona(searchParams.get('persona'))
+  const persona      = personas[personaId]
+  const { t }        = useLanguage()
+  const [realName,   setRealName]   = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('ss-user-profile')
+      if (raw) {
+        const p = JSON.parse(raw)
+        setRealName(p.name ?? null)
+        setIsLoggedIn(true)
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  const displayName = realName ?? persona.shortName
+  const initials = displayName.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
 
   return (
     <>
-      {/* Persona badge */}
+      {/* User / persona badge */}
       <Link
-        href={`/login?persona=${personaId}`}
+        href={isLoggedIn ? '/dashboard/profile' : `/login?persona=${personaId}`}
         style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '10px 12px', borderRadius: 10,
@@ -38,23 +58,37 @@ function PersonaNavContent() {
           transition: 'opacity 0.15s',
         }}
       >
-        <span style={{ fontSize: 22, lineHeight: 1 }}>{persona.avatar}</span>
+        {isLoggedIn ? (
+          <div style={{
+            width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+            background: 'var(--accent)', border: '1px solid var(--accent-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, fontWeight: 800, color: '#fff',
+          }}>
+            {initials}
+          </div>
+        ) : (
+          <span style={{ fontSize: 22, lineHeight: 1 }}>{persona.avatar}</span>
+        )}
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3 }}>
-            {persona.shortName}
+            {displayName}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 1 }}>Switch persona →</div>
+          <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 1 }}>
+            {isLoggedIn ? 'View profile' : t.nav.switchPersona}
+          </div>
         </div>
       </Link>
 
       {/* Nav items */}
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {navItems.map(({ href, label, Icon }) => {
+        {NAV_ITEMS.map(({ href, key, Icon }) => {
           const isActive = pathname === href
+          const label    = t.nav[key]
           return (
             <Link
               key={href}
-              href={`${href}?persona=${personaId}`}
+              href={isLoggedIn ? href : `${href}?persona=${personaId}`}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '9px 12px', borderRadius: 8,
@@ -68,7 +102,7 @@ function PersonaNavContent() {
             >
               <Icon style={{ width: 15, height: 15 }} />
               {label}
-              {label === 'History' && (
+              {key === 'history' && (
                 <span style={{
                   marginLeft: 'auto',
                   width: 6, height: 6, borderRadius: '50%',
@@ -87,10 +121,19 @@ function HeaderPersonaBadge() {
   const searchParams = useSearchParams()
   const personaId   = normalizePersona(searchParams.get('persona'))
   const persona     = personas[personaId]
+  const [realName, setRealName] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('ss-user-profile')
+      if (raw) { setRealName(JSON.parse(raw)?.name ?? null); setIsLoggedIn(true) }
+    } catch { /* ignore */ }
+  }, [])
 
   return (
     <Link
-      href={`/login?persona=${personaId}`}
+      href={isLoggedIn ? '/dashboard/profile' : `/login?persona=${personaId}`}
       style={{
         display: 'flex', alignItems: 'center', gap: 7,
         padding: '5px 12px', borderRadius: 8,
@@ -99,8 +142,8 @@ function HeaderPersonaBadge() {
         textDecoration: 'none', transition: 'all 0.15s',
       }}
     >
-      <span style={{ fontSize: 16, lineHeight: 1 }}>{persona.avatar}</span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{persona.name}</span>
+      <span style={{ fontSize: 16, lineHeight: 1 }}>{isLoggedIn ? '👤' : persona.avatar}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{realName ?? persona.name}</span>
       <span style={{ fontSize: 10, color: 'var(--text-2)' }}>▾</span>
     </Link>
   )
@@ -111,6 +154,7 @@ function SettingsLink() {
   const personaId = normalizePersona(searchParams.get('persona'))
   const pathname = usePathname()
   const isActive = pathname === '/dashboard/settings'
+  const { t } = useLanguage()
   return (
     <Link
       href={`/dashboard/settings?persona=${personaId}`}
@@ -125,7 +169,7 @@ function SettingsLink() {
       }}
     >
       <Settings style={{ width: 15, height: 15 }} />
-      Settings
+      {t.nav.settings}
     </Link>
   )
 }
@@ -133,6 +177,7 @@ function SettingsLink() {
 // ── Main shell ───────────────────────────────────────────────────────────────
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('dark')
+  const { t, dir } = useLanguage()
 
   useEffect(() => {
     const saved = localStorage.getItem('ss-theme') as Theme | null
@@ -170,6 +215,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   return (
     <div
       className={`dash-${theme}`}
+      dir={dir}
       style={{
         height: '100dvh', display: 'flex', flexDirection: 'column',
         background: 'var(--bg)', color: 'var(--text)',
@@ -201,7 +247,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
             background: 'var(--card)',
             border: '1px solid var(--border)',
             borderRadius: 4, padding: '2px 6px',
-          }}>Dashboard</span>
+          }}>{t.nav.dashboard}</span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -230,9 +276,17 @@ export default function DashboardShell({ children }: { children: React.ReactNode
           </Suspense>
 
           {/* Logout */}
-          <Link href="/" style={{ ...iconBtn, textDecoration: 'none' }} title="Logout">
+          <button
+            onClick={() => {
+              localStorage.removeItem('ss-user-id')
+              localStorage.removeItem('ss-user-profile')
+              window.location.href = '/login'
+            }}
+            style={{ ...iconBtn, border: 'none', cursor: 'pointer' }}
+            title="Logout"
+          >
             <LogOut style={{ width: 14, height: 14 }} />
-          </Link>
+          </button>
         </div>
       </header>
 
@@ -275,7 +329,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
             }}
           >
             <HelpCircle style={{ width: 15, height: 15 }} />
-            Help
+            {t.nav.help}
           </button>
         </aside>
 

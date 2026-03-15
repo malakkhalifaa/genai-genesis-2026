@@ -3,6 +3,8 @@
  * Supports Gemini (primary) and OpenAI (fallback). Returns structured risk + reasons + explanation.
  */
 
+import { detectLanguage, buildBilingualInstruction } from './language'
+
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
 export interface AnalyzeResult {
@@ -11,9 +13,11 @@ export interface AnalyzeResult {
   reasons: string[];
   explanation: string;
   recommendedAction: string;
+  detectedLanguage?: string; // ISO code, e.g. "zh", "ar" — set when non-English content detected
 }
 
 export interface UserContext {
+  name?: string;              // user's real name — LLM addresses them personally
   neverUsedCrypto?: boolean;
   typicalContacts?: string[]; // e.g. ["family", "coworkers"]
   knownDomains?: string[];
@@ -22,11 +26,18 @@ export interface UserContext {
 }
 
 export interface AnalyzeInput {
-  contentType: "text" | "url" | "image";
+  contentType: "text" | "url" | "image" | "document";
   text?: string;
   url?: string;
   imageBase64?: string;
+  documentBase64?: string;
+  documentMimeType?: string; // e.g. "application/pdf", "text/plain"
   userContext?: UserContext;
+  // URL analysis extras
+  fetchedPageText?: string;   // visible text extracted from the fetched page
+  fetchedPageTitle?: string;  // <title> of the fetched page
+  finalUrl?: string;          // URL after following redirects
+  urlRedirected?: boolean;    // true if original URL redirected elsewhere
 }
 
 const STRUCTURED_PROMPT = `You are a fraud and scam detection assistant for vulnerable users (seniors, immigrants, first-time internet users). Your job is to analyze content and return a JSON object with:
@@ -36,7 +47,9 @@ const STRUCTURED_PROMPT = `You are a fraud and scam detection assistant for vuln
 - explanation: 1-3 sentences in plain language (no jargon) explaining the risk to the user
 - recommendedAction: one short sentence (e.g. "Do not reply or click. Contact your bank via official website.")
 
-Consider these scam patterns: urgency or pressure, impersonation (bank/CRA/support), requests for verification codes or passwords, money transfers, crypto or gift card requests, fake job offers with unrealistic pay, phishing links, too-good-to-be-true offers.
+The content may be written in ANY language — detect and analyze it regardless of language. Scam patterns exist in every language. If the user context specifies a preferred locale, write the explanation and recommendedAction in that language; otherwise use English.
+
+Consider these scam patterns: urgency or pressure, impersonation (bank/CRA/IRS/support), requests for verification codes or passwords, money transfers, crypto or gift card requests, fake job offers with unrealistic pay, phishing links, too-good-to-be-true offers, threats of arrest or legal action.
 
 Respond with exactly one JSON object. No markdown, no code blocks, no text before or after, no bullet points. Example: {"riskLevel":"low","riskScore":5,"reasons":[],"explanation":"...","recommendedAction":"..."}`;
 
@@ -47,17 +60,35 @@ function buildContentPrompt(input: AnalyzeInput, behavioralHints: string[]): str
     parts.push("Content to analyze (text):\n" + input.text);
   }
   if (input.contentType === "url" && input.url) {
-    parts.push("URL to analyze:\n" + input.url);
+    const urlLines = ["URL to analyze:\n" + input.url];
+    if (input.urlRedirected && input.finalUrl && input.finalUrl !== input.url) {
+      urlLines.push("⚠ This URL redirects to: " + input.finalUrl);
+    }
+    if (input.fetchedPageTitle) {
+      urlLines.push("Page title: " + input.fetchedPageTitle);
+    }
+    parts.push(urlLines.join("\n"));
+
+    if (input.fetchedPageText) {
+      parts.push(
+        "Visible page content (first 10 000 chars — look for urgency, impersonation, credential requests, prize claims, payment demands):\n" +
+        input.fetchedPageText
+      );
+    }
   }
   if (input.contentType === "image" && input.imageBase64) {
     parts.push("Content to analyze: an image (screenshot or message). Describe what you see and assess scam risk.");
   }
+  if (input.contentType === "document" && input.documentBase64) {
+    parts.push("Content to analyze: an uploaded document. Read all visible text, headings, fine print, links, and sender/recipient details, then assess scam or fraud risk.");
+  }
 
   if (input.userContext) {
     const ctx = input.userContext;
-    const ctxLines: string[] = ["User context (use for personalization):"];
-    if (ctx.neverUsedCrypto) ctxLines.push("- User has never used cryptocurrency.");
-    if (ctx.neverSentGiftCards) ctxLines.push("- User has never sent gift cards as payment.");
+    const ctxLines: string[] = ["User context (use for personalization — address the user by name in your explanation):"];
+    if (ctx.name) ctxLines.push("- User's name: " + ctx.name + " (use their name when explaining the risk, e.g. '" + ctx.name + ", you have never used Bitcoin…')");
+    if (ctx.neverUsedCrypto) ctxLines.push("- " + (ctx.name ?? "The user") + " has NEVER used cryptocurrency. Any crypto request is highly suspicious for them.");
+    if (ctx.neverSentGiftCards) ctxLines.push("- " + (ctx.name ?? "The user") + " has NEVER sent gift cards as payment. Gift card requests are a strong scam signal.");
     if (ctx.typicalContacts?.length) ctxLines.push("- Typical contacts: " + ctx.typicalContacts.join(", "));
     if (ctx.knownDomains?.length) ctxLines.push("- Known safe domains: " + ctx.knownDomains.slice(0, 20).join(", "));
     if (ctx.locale) ctxLines.push("- Prefer explanation in: " + ctx.locale);
@@ -66,6 +97,14 @@ function buildContentPrompt(input: AnalyzeInput, behavioralHints: string[]): str
 
   if (behavioralHints.length > 0) {
     parts.push("Behavioral hints (include in reasons if relevant):\n" + behavioralHints.join("\n"));
+  }
+
+  // Auto-detect script language and request bilingual output when non-English
+  const textSample = input.text ?? input.url ?? ''
+  if (textSample) {
+    const detected = detectLanguage(textSample)
+    const bilingualInstr = buildBilingualInstruction(detected)
+    if (bilingualInstr) parts.push(bilingualInstr)
   }
 
   return parts.join("\n\n");
@@ -123,13 +162,16 @@ function detectMimeType(base64: string): string {
 }
 
 async function callGemini(input: AnalyzeInput, behavioralHints: string[]): Promise<AnalyzeResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  // For document analysis use the dedicated key if provided, else fall back to primary
+  const isMultimodal = input.contentType === "image" || input.contentType === "document";
+  const apiKey =
+    (isMultimodal && process.env.GEMINI_API_KEY_DOCS) ||
+    process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
 
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
 
-  const isImage = input.contentType === "image" && !!input.imageBase64;
   const contentPrompt = buildContentPrompt(input, behavioralHints);
   const fullTextPrompt = STRUCTURED_PROMPT + "\n\n" + contentPrompt;
 
@@ -140,15 +182,28 @@ async function callGemini(input: AnalyzeInput, behavioralHints: string[]): Promi
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let result: any;
 
-      if (isImage) {
-        const mimeType = detectMimeType(input.imageBase64!);
+      if (input.contentType === "image" && input.imageBase64) {
+        const mimeType = detectMimeType(input.imageBase64);
         result = await model.generateContent({
           contents: [{
             role: "user",
             parts: [
               { text: STRUCTURED_PROMPT + "\n\nAnalyze every piece of visible text in this screenshot for scam or fraud indicators." },
-              { inlineData: { mimeType, data: input.imageBase64! } },
+              { inlineData: { mimeType, data: input.imageBase64 } },
               ...(behavioralHints.length ? [{ text: "Behavioral hints:\n" + behavioralHints.join("\n") }] : []),
+            ],
+          }],
+        });
+      } else if (input.contentType === "document" && input.documentBase64) {
+        const mimeType = input.documentMimeType || "application/pdf";
+        result = await model.generateContent({
+          contents: [{
+            role: "user",
+            parts: [
+              { text: STRUCTURED_PROMPT + "\n\nAnalyze the full content of this document for scam, fraud, or phishing. Pay attention to sender details, urgent language, requests for money or personal info, suspicious links, and fine print." },
+              { inlineData: { mimeType, data: input.documentBase64 } },
+              ...(behavioralHints.length ? [{ text: "Behavioral hints:\n" + behavioralHints.join("\n") }] : []),
+              ...(contentPrompt ? [{ text: contentPrompt }] : []),
             ],
           }],
         });
@@ -239,15 +294,23 @@ export async function analyzeWithLLM(
   input: AnalyzeInput,
   behavioralHints: string[] = []
 ): Promise<AnalyzeResult> {
-  // Watsonx/Granite is text-only — skip for image inputs and fall through to Gemini Vision
-  if (input.contentType !== "image" && process.env.WATSONX_AI_APIKEY && process.env.WATSONX_PROJECT_ID) {
-    return callWatsonx(input, behavioralHints);
+  // Detect language for bilingual output annotation
+  const textSample = input.text ?? input.url ?? ''
+  const detectedLang = textSample ? detectLanguage(textSample) : 'en'
+
+  // Watsonx/Granite is text-only — skip for image/document inputs and fall through to Gemini Vision
+  let result: AnalyzeResult
+  if (input.contentType !== "image" && input.contentType !== "document" && process.env.WATSONX_AI_APIKEY && process.env.WATSONX_PROJECT_ID) {
+    result = await callWatsonx(input, behavioralHints);
+  } else if (process.env.GEMINI_API_KEY) {
+    result = await callGemini(input, behavioralHints);
+  } else if (process.env.OPENAI_API_KEY) {
+    result = await callOpenAI(input, behavioralHints);
+  } else {
+    throw new Error("Set WATSONX_AI_APIKEY+WATSONX_PROJECT_ID, GEMINI_API_KEY, or OPENAI_API_KEY in environment.");
   }
-  if (process.env.GEMINI_API_KEY) {
-    return callGemini(input, behavioralHints);
-  }
-  if (process.env.OPENAI_API_KEY) {
-    return callOpenAI(input, behavioralHints);
-  }
-  throw new Error("Set WATSONX_AI_APIKEY+WATSONX_PROJECT_ID, GEMINI_API_KEY, or OPENAI_API_KEY in environment.");
+
+  // Attach detected language when non-English
+  if (detectedLang !== 'en') result.detectedLanguage = detectedLang
+  return result
 }

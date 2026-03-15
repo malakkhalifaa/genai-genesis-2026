@@ -76,7 +76,7 @@ export default function ThreeWaves() {
     const startZ = new Float32Array(pos.count)
     for (let i = 0; i < pos.count; i++) startZ[i] = pos.getZ(i)
 
-    const clock = new THREE.Clock()
+    const startTime = performance.now()
 
     let mouseX = 0
     let mouseY = 0
@@ -91,7 +91,7 @@ export default function ThreeWaves() {
 
     const animate = () => {
       requestAnimationFrame(animate)
-      const t = clock.getElapsedTime()
+      const t = (performance.now() - startTime) / 1000
 
       // Ease camera to cursor
       camera.position.x += (mouseX * 0.1 - camera.position.x) * 0.02

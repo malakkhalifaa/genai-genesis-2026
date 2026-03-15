@@ -2,8 +2,10 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Sun, Moon, Monitor, Type, Zap, Bell, Shield, Trash2, Download } from 'lucide-react'
+import { Sun, Moon, Monitor, Type, Zap, Bell, Shield, Trash2, Download, Globe } from 'lucide-react'
 import { normalizePersona, personas } from '@/lib/mockData'
+import { useLanguage } from '@/hooks/useLanguage'
+import { LANGUAGES, LangCode } from '@/lib/i18n'
 
 type Theme = 'dark' | 'light'
 type FontSize = 'normal' | 'large' | 'xl'
@@ -89,6 +91,8 @@ function SettingsContent() {
   const personaId = normalizePersona(searchParams.get('persona'))
   const persona = personas[personaId]
 
+  const { t, lang: currentLang, setLang } = useLanguage()
+
   const [theme,         setTheme]         = useState<Theme>('dark')
   const [fontSize,      setFontSize]      = useState<FontSize>('normal')
   const [reduceMotion,  setReduceMotion]  = useState(false)
@@ -133,40 +137,41 @@ function SettingsContent() {
     { value: 'xl',     label: 'Extra large',desc: '20px' },
   ]
 
+  const fontSizeLabels = [t.settings.normal, t.settings.large, t.settings.extraLarge]
+
   return (
     <div style={{ maxWidth: 640 }}>
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', margin: '0 0 6px' }}>Settings</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', margin: '0 0 6px' }}>{t.settings.title}</h1>
         <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0 }}>
-          Viewing as {persona.shortName} · {persona.role}
+          {t.settings.viewingAs} {persona.shortName} · {persona.role}
         </p>
       </div>
 
       {/* ── APPEARANCE ── */}
       <div style={card}>
-        <SectionHeader icon={<Monitor style={{ width: 14, height: 14 }} />} title="Appearance" />
-
+        <SectionHeader icon={<Monitor style={{ width: 14, height: 14 }} />} title={t.settings.appearance} />
         <div style={{ marginTop: 4 }}>
-          <SettingRow label="Theme" description="Choose how the dashboard looks">
+          <SettingRow label={t.settings.theme} description={t.settings.themeDesc}>
             <div style={{ display: 'flex', gap: 8 }}>
-              {(['dark', 'light'] as Theme[]).map(t => (
+              {(['dark', 'light'] as Theme[]).map(th => (
                 <button
-                  key={t}
-                  onClick={() => applyTheme(t)}
-                  aria-pressed={theme === t}
+                  key={th}
+                  onClick={() => applyTheme(th)}
+                  aria-pressed={theme === th}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
                     padding: '7px 14px', borderRadius: 8, cursor: 'pointer',
-                    border: theme === t ? '1.5px solid var(--accent-border)' : '1px solid var(--border)',
-                    background: theme === t ? 'var(--accent-soft)' : 'transparent',
-                    color: theme === t ? 'var(--active-text)' : 'var(--text-2)',
+                    border: theme === th ? '1.5px solid var(--accent-border)' : '1px solid var(--border)',
+                    background: theme === th ? 'var(--accent-soft)' : 'transparent',
+                    color: theme === th ? 'var(--active-text)' : 'var(--text-2)',
                     fontSize: 13, fontWeight: 500,
                   }}
                 >
-                  {t === 'dark'
-                    ? <Moon  style={{ width: 13, height: 13 }} aria-hidden="true" />
-                    : <Sun   style={{ width: 13, height: 13 }} aria-hidden="true" />}
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                  {th === 'dark'
+                    ? <Moon style={{ width: 13, height: 13 }} aria-hidden="true" />
+                    : <Sun  style={{ width: 13, height: 13 }} aria-hidden="true" />}
+                  {th === 'dark' ? t.settings.dark : t.settings.light}
                 </button>
               ))}
             </div>
@@ -174,17 +179,43 @@ function SettingsContent() {
         </div>
       </div>
 
+      {/* ── LANGUAGE ── */}
+      <div style={card}>
+        <SectionHeader icon={<Globe style={{ width: 14, height: 14 }} />} title={t.settings.language} />
+        <div style={{ marginTop: 8 }}>
+          <p style={{ fontSize: 12, color: 'var(--text-2)', margin: '0 0 12px', lineHeight: 1.5 }}>
+            {t.settings.languageDesc}
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+            {(Object.entries(LANGUAGES) as [LangCode, typeof LANGUAGES[LangCode]][]).map(([code, meta]) => (
+              <button
+                key={code}
+                onClick={() => setLang(code)}
+                aria-pressed={currentLang === code}
+                style={{
+                  padding: '7px 13px', borderRadius: 8, cursor: 'pointer',
+                  border: currentLang === code ? '1.5px solid var(--accent-border)' : '1px solid var(--border)',
+                  background: currentLang === code ? 'var(--accent-soft)' : 'transparent',
+                  color: currentLang === code ? 'var(--active-text)' : 'var(--text-2)',
+                  fontSize: 13, fontWeight: currentLang === code ? 600 : 400,
+                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1,
+                }}
+              >
+                <span>{meta.nativeName}</span>
+                <span style={{ fontSize: 10, opacity: 0.6 }}>{meta.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* ── ACCESSIBILITY ── */}
       <div style={card}>
-        <SectionHeader icon={<Type style={{ width: 14, height: 14 }} />} title="Accessibility" />
-
+        <SectionHeader icon={<Type style={{ width: 14, height: 14 }} />} title={t.settings.accessibility} />
         <div style={{ marginTop: 4 }}>
-          <SettingRow
-            label="Text size"
-            description="Larger text makes the dashboard easier to read"
-          >
+          <SettingRow label={t.settings.textSize} description={t.settings.textSizeDesc}>
             <div style={{ display: 'flex', gap: 6 }}>
-              {fontSizeOptions.map(opt => (
+              {fontSizeOptions.map((opt, i) => (
                 <button
                   key={opt.value}
                   onClick={() => applyFontSize(opt.value)}
@@ -198,31 +229,25 @@ function SettingsContent() {
                     fontSize: 12, fontWeight: 500,
                   }}
                 >
-                  {opt.label}
+                  {fontSizeLabels[i]}
                 </button>
               ))}
             </div>
           </SettingRow>
 
-          <SettingRow
-            label="Reduce motion"
-            description="Turns off animations — helpful for motion sensitivity"
-          >
+          <SettingRow label={t.settings.reduceMotion} description={t.settings.reduceMotionDesc}>
             <Toggle
               on={reduceMotion}
               onChange={v => { setReduceMotion(v); localStorage.setItem('ss-reduce-motion', v ? '1' : '0') }}
-              label="Reduce motion"
+              label={t.settings.reduceMotion}
             />
           </SettingRow>
 
-          <SettingRow
-            label="High contrast"
-            description="Increases border and text contrast for better visibility"
-          >
+          <SettingRow label={t.settings.highContrast} description={t.settings.highContrastDesc}>
             <Toggle
               on={highContrast}
               onChange={v => { setHighContrast(v); localStorage.setItem('ss-high-contrast', v ? '1' : '0') }}
-              label="High contrast mode"
+              label={t.settings.highContrast}
             />
           </SettingRow>
         </div>
@@ -230,34 +255,30 @@ function SettingsContent() {
 
       {/* ── NOTIFICATIONS ── */}
       <div style={card}>
-        <SectionHeader icon={<Bell style={{ width: 14, height: 14 }} />} title="Notifications" />
-
+        <SectionHeader icon={<Bell style={{ width: 14, height: 14 }} />} title={t.settings.notifications} />
         <div style={{ marginTop: 4 }}>
-          <SettingRow label="Scan complete" description="Alert when an analysis finishes">
-            <Toggle on={notifyScan} onChange={setNotifyScan} label="Scan complete notifications" />
+          <SettingRow label={t.settings.scanComplete} description={t.settings.scanCompleteDesc}>
+            <Toggle on={notifyScan} onChange={setNotifyScan} label={t.settings.scanComplete} />
           </SettingRow>
-          <SettingRow label="High risk detected" description="Immediate alert for 75+ risk scores">
-            <Toggle on={notifyHighRisk} onChange={setNotifyHighRisk} label="High risk notifications" />
+          <SettingRow label={t.settings.highRiskAlert} description={t.settings.highRiskAlertDesc}>
+            <Toggle on={notifyHighRisk} onChange={setNotifyHighRisk} label={t.settings.highRiskAlert} />
           </SettingRow>
-          <SettingRow
-            label="Weekly digest"
-            description="Summary of scans and blocked threats each week"
-          >
-            <Toggle on={notifyWeekly} onChange={setNotifyWeekly} label="Weekly digest email" />
+          <SettingRow label={t.settings.weeklyDigest} description={t.settings.weeklyDigestDesc}>
+            <Toggle on={notifyWeekly} onChange={setNotifyWeekly} label={t.settings.weeklyDigest} />
           </SettingRow>
         </div>
       </div>
 
       {/* ── ACTIVE PROTECTION ── */}
       <div style={card}>
-        <SectionHeader icon={<Shield style={{ width: 14, height: 14 }} />} title={`Protection for ${persona.name}`} />
+        <SectionHeader icon={<Shield style={{ width: 14, height: 14 }} />} title={t.settings.protection.replace('{name}', persona.name)} />
         <div style={{ marginTop: 4 }}>
           {[
-            { label: 'Text message scanning', on: true },
-            { label: 'Email analysis',        on: true },
-            { label: 'Link checking',         on: true },
-            { label: 'Payment request alerts',on: true },
-            { label: 'Phone call monitoring', on: false, badge: 'Beta' },
+            { label: t.settings.textScanning,    on: true  },
+            { label: t.settings.emailAnalysis,   on: true  },
+            { label: t.settings.linkChecking,    on: true  },
+            { label: t.settings.paymentAlerts,   on: true  },
+            { label: t.settings.phoneMonitoring, on: false, badge: t.common.beta },
           ].map(({ label, on, badge }) => (
             <SettingRow key={label} label={label}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -276,7 +297,7 @@ function SettingsContent() {
 
       {/* ── DATA & PRIVACY ── */}
       <div style={card}>
-        <SectionHeader icon={<Zap style={{ width: 14, height: 14 }} />} title="Data & Privacy" />
+        <SectionHeader icon={<Zap style={{ width: 14, height: 14 }} />} title={t.settings.dataPrivacy} />
         <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
           <button style={{
             display: 'flex', alignItems: 'center', gap: 7,
@@ -284,7 +305,7 @@ function SettingsContent() {
             border: '1px solid var(--border)', background: 'transparent',
             fontSize: 13, fontWeight: 500, color: 'var(--text-2)',
           }}>
-            <Download style={{ width: 13, height: 13 }} aria-hidden="true" /> Export data
+            <Download style={{ width: 13, height: 13 }} aria-hidden="true" /> {t.settings.exportData}
           </button>
           <button style={{
             display: 'flex', alignItems: 'center', gap: 7,
@@ -293,18 +314,16 @@ function SettingsContent() {
             background: 'var(--risk-high-bg)',
             fontSize: 13, fontWeight: 500, color: 'var(--risk-high-text)',
           }}>
-            <Trash2 style={{ width: 13, height: 13 }} aria-hidden="true" /> Clear scan history
+            <Trash2 style={{ width: 13, height: 13 }} aria-hidden="true" /> {t.settings.clearHistory}
           </button>
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 14, lineHeight: 1.6 }}>
-          ScamShield stores your behavioral profile and scan history locally in your browser session.
-          No data is sent to external servers without your consent.
+          {t.settings.privacyNote}
         </p>
       </div>
 
-      {/* Version */}
       <p style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center', marginTop: 8 }}>
-        ScamShield · GenAI Genesis 2026 · Demo build
+        {t.settings.version}
       </p>
     </div>
   )
