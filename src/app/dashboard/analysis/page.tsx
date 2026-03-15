@@ -683,8 +683,8 @@ function AnalysisContent() {
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
                   {t.analysis.whyMatters.replace('{name}', userProfile?.name ?? persona.name)}
                 </div>
-                <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.7, margin: 0, fontStyle: 'italic' }}>
-                  &ldquo;{result.reason}&rdquo;
+                <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.7, margin: 0 }}>
+                  {result.reason}
                 </p>
               </div>
 
