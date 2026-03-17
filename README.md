@@ -1,8 +1,17 @@
 # ScamShield: AI Personal Fraud Guardian
 
-**GenAI Genesis Hackathon · Social Impact**
+**GenAI Genesis Hackathon** · TD Fraud Detection · IBM Best Use of Cloud Services
 
 An AI that learns how *you* use the internet and explains risk in plain language — so seniors, immigrants, and first-time users can spot scams before they click.
+
+---
+
+## Try it
+
+| | |
+|---|---|
+| **Live demo** | [https://demo-sigma-nine-38.vercel.app/](https://demo-sigma-nine-38.vercel.app/) |
+| **Demo video** | [Watch on YouTube](https://www.youtube.com/watch?v=ewUyoqX0jk8&t=79s) |
 
 ---
 
@@ -15,7 +24,35 @@ An AI that learns how *you* use the internet and explains risk in plain language
 - **8 languages** — “Is this safe?” in the user’s language (e.g. Chinese, Punjabi, Arabic, Tagalog).
 - **Learns from you** — When you mark scam or legit, we feed it back so the model doesn’t repeat the same mistakes.
 
-**Live demo:** [Add your Vercel/demo URL here]
+---
+
+## Screenshots
+
+### Analyzer UI
+
+Paste a message or URL and get risk level, reasons, explanation, and recommended action.
+
+<img width="800" alt="ScamShield analyzer UI" src="https://github.com/user-attachments/assets/512b6b21-d56f-429d-96ea-1c5e8d966b13" />
+
+### Login
+
+<img width="800" alt="ScamShield login page" src="https://github.com/user-attachments/assets/204fefac-8fbb-45bc-8e9c-5a84372bad3c" />
+
+### Dashboard
+
+<img width="800" alt="ScamShield dashboard" src="https://github.com/user-attachments/assets/fc304962-ff76-425e-a300-2d31b6b46413" />
+
+### Live call demo
+
+Browser transcribes; we analyze the text. We never intercept the call.
+
+<img width="700" alt="ScamShield live call demo" src="https://github.com/user-attachments/assets/cdf89c82-1c59-48e7-bdce-4a8d152346eb" />
+
+### Chrome extension
+
+“Analyze this page” / “Analyze selected text” from any tab.
+
+<img width="500" alt="ScamShield Chrome extension" src="https://github.com/user-attachments/assets/f18df6ff-188f-43d1-bcb5-919516ff5061" />
 
 ---
 
@@ -133,7 +170,7 @@ genai-genesis-2026/
 
 **What we built:** One place to check messages, links, and (optionally) call audio. Personalized explanations (“this is risky for you because…”) and learning from user corrections so the system gets better over time.
 
-**Hackathon fit:** TD Fraud Detection (behavioral + explainability), Google Community Impact (protect vulnerable users), IBM Technology (Watsonx/Granite).
+**Hackathon fit:** **TD Fraud Detection** (behavioral + explainability) · **IBM Best Use of Cloud Services** (Watsonx/Granite on IBM Cloud).
 
 ---
 
