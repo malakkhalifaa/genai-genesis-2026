@@ -32,27 +32,37 @@ An AI that learns how *you* use the internet and explains risk in plain language
 
 Paste a message or URL and get risk level, reasons, explanation, and recommended action.
 
-<img width="800" alt="ScamShield analyzer UI" src="https://github.com/user-attachments/assets/512b6b21-d56f-429d-96ea-1c5e8d966b13" />
+<div align="center">
+  <img width="800" alt="ScamShield analyzer UI" src="https://github.com/user-attachments/assets/512b6b21-d56f-429d-96ea-1c5e8d966b13" />
+</div>
 
 ### Login
 
-<img width="800" alt="ScamShield login page" src="https://github.com/user-attachments/assets/204fefac-8fbb-45bc-8e9c-5a84372bad3c" />
+<div align="center">
+  <img width="800" alt="ScamShield login page" src="https://github.com/user-attachments/assets/204fefac-8fbb-45bc-8e9c-5a84372bad3c" />
+</div>
 
 ### Dashboard
 
-<img width="800" alt="ScamShield dashboard" src="https://github.com/user-attachments/assets/fc304962-ff76-425e-a300-2d31b6b46413" />
+<div align="center">
+  <img width="800" alt="ScamShield dashboard" src="https://github.com/user-attachments/assets/fc304962-ff76-425e-a300-2d31b6b46413" />
+</div>
 
 ### Live call demo
 
 Browser transcribes; we analyze the text. We never intercept the call.
 
-<img width="700" alt="ScamShield live call demo" src="https://github.com/user-attachments/assets/cdf89c82-1c59-48e7-bdce-4a8d152346eb" />
+<div align="center">
+  <img width="700" alt="ScamShield live call demo" src="https://github.com/user-attachments/assets/cdf89c82-1c59-48e7-bdce-4a8d152346eb" />
+</div>
 
 ### Chrome extension
 
 “Analyze this page” / “Analyze selected text” from any tab.
 
-<img width="500" alt="ScamShield Chrome extension" src="https://github.com/user-attachments/assets/f18df6ff-188f-43d1-bcb5-919516ff5061" />
+<div align="center">
+  <img width="500" alt="ScamShield Chrome extension" src="https://github.com/user-attachments/assets/f18df6ff-188f-43d1-bcb5-919516ff5061" />
+</div>
 
 ---
 
@@ -105,15 +115,49 @@ For user profiles and report history, set your Supabase URL and anon key in `.en
 
 ---
 
-## How the analyzer works (simple)
+## How the analyzer works (technical)
 
-1. **You send** content (text, URL, or image) and optional user context.
-2. **We add hints** — Behavioral (e.g. “user has never used crypto”) and URL checks (suspicious TLDs, fake-login patterns).
-3. **We build one prompt** — Instructions + content + context + hints.
-4. **The LLM returns** one JSON: `riskLevel`, `riskScore`, `reasons`, `explanation`, `recommendedAction`.
-5. **We parse and return** that to the frontend (with a safe default if the model returns invalid JSON).
+End-to-end flow from request to response:
 
-No retraining — we **instruct** the model with scam patterns and **guide** each request with your context and rule-based hints.
+### 1. Request handling (`POST /api/analyze`)
+
+- **Input:** `contentType` (`text` | `url` | `image` | `document`), plus `text`, `url`, `imageBase64`, or `documentBase64` as appropriate. Optional `userContext` (or `userId` to load profile from Supabase).
+- **Validation:** Required fields checked per `contentType`; 400 if missing.
+- **Profile resolution:** If `userId` is sent, the route fetches the user row from Supabase and maps it to `userContext` (`neverUsedCrypto`, `knownDomains`, `typicalContacts`, etc.) so the LLM gets real profile data.
+
+### 2. URL mode: content fetching
+
+- For `contentType === "url"`, we **fetch the page** (server-side): follow redirects, extract visible text and `<title>`, and pass `fetchedPageText`, `fetchedPageTitle`, `finalUrl`, and `urlRedirected` into the analyzer. The LLM sees both the URL and the page body so it can detect phishing copy, fake login forms, and urgency language.
+
+### 3. Hint generation (no LLM yet)
+
+- **Behavioral** (`lib/behavioral.ts`): Compares the request to `userContext`. Examples: if `neverUsedCrypto` and the content mentions crypto/Bitcoin → add *"Unusual for you: you have never used cryptocurrency."* If `knownDomains` is set and the URL isn’t in the list, that can be surfaced. Output is a list of short hint strings.
+- **Phishing** (`lib/phishing.ts`): Runs only when a URL is present. Checks TLD against a suspicious set (e.g. `.tk`, `.xyz`), looks for phishy substrings (e.g. fake login, brand impersonation), and homograph-style character ranges. Returns lines like *"[URL check] Suspicious TLD: .tk (medium)"*.
+- All hints are concatenated and passed into the prompt as extra context; the LLM uses them to justify risk and reasons.
+
+### 4. Prompt construction (`lib/ai.ts`)
+
+- **System/instruction block:** A fixed `STRUCTURED_PROMPT` defines the task (fraud detection for vulnerable users), the exact JSON shape required (`riskLevel`, `riskScore`, `reasons`, `explanation`, `recommendedAction`), and scam patterns (urgency, impersonation, verification codes, crypto/gift cards, phishing, etc.). It also states that content can be in any language and that we may request the explanation in a specific locale.
+- **Content block:** Built by `buildContentPrompt()`: the raw content (message, URL + optional fetched page text/title), then `userContext` (name, neverUsedCrypto, knownDomains, typicalContacts, locale), then the behavioral and phishing hint lines. For non-English content we optionally add a short instruction so the model can return a bilingual or localized explanation.
+- **Full prompt:** `STRUCTURED_PROMPT + "\n\n" + contentPrompt` (and for image/document, the same instructions plus the binary payload). One contiguous text (plus optional image/document) is sent to the model; we do not fine-tune or retrain — we only instruct and supply context per request.
+
+### 5. LLM invocation and provider order
+
+- **Provider order:** If Watsonx is configured (`WATSONX_AI_APIKEY`, `WATSONX_PROJECT_ID`) and the request is text/URL (not image/document), we call **Watsonx** (e.g. `ibm/granite-3-8b-instruct`). Else we use **Gemini** (with model fallback list, e.g. `gemini-2.5-flash-lite`, `gemini-2.0-flash`). Else **OpenAI** (`gpt-4o-mini`). Image and document flows use Gemini (or OpenAI where supported) for vision/document.
+- **Parameters:** Low temperature (~0.2) for stable, structured output. Watsonx uses `max_new_tokens`; Gemini/OpenAI use their default caps.
+- **Same prompt:** The exact same prompt text is sent to whichever provider is selected; only the client and model ID change.
+
+### 6. Response parsing
+
+- The model returns a **string**. We expect a single JSON object; often the model wraps it in markdown code fences or adds prose.
+- **parseStructuredResponse():** Strip optional ```json/``` fences, locate the first `{` and last `}`, slice that substring, and `JSON.parse` it. We then validate and coerce: `riskLevel` must be one of `low` | `medium` | `high` | `critical`; `riskScore` clamped to 0–100; `reasons` must be an array of strings; `explanation` and `recommendedAction` must be strings. If parsing or validation fails, we return a **safe default** (e.g. `riskLevel: "medium"`, `riskScore: 50`, and a short message) so the API never throws a 500 due to malformed model output.
+- Optional: we attach `detectedLanguage` (e.g. for non-English content) when our language detection says the input wasn’t English.
+
+### 7. Response to client
+
+- The route returns the structured object: `{ riskLevel, riskScore, reasons, explanation, recommendedAction }` (and optionally `detectedLanguage`). CORS headers are set so the web app and Chrome extension can call the API from the browser.
+
+**Summary:** No retraining. We **instruct** the model with a fixed scam-detection prompt and **guide** each request with user context and rule-based hints (behavioral + URL/phishing). The model returns JSON; we parse it defensively and expose a stable API contract.
 
 ---
 
@@ -121,8 +165,10 @@ No retraining — we **instruct** the model with scam patterns and **guide** eac
 
 **POST /api/analyze**
 
-- **Body:** `{ contentType: "text" | "url" | "image", text?, url?, imageBase64?, userContext?, userId? }`
-- **Response:** `{ riskLevel, riskScore, reasons, explanation, recommendedAction }`
+- **Body:** `{ contentType: "text" | "url" | "image" | "document", text?, url?, imageBase64?, documentBase64?, documentMimeType?, userContext?, userId? }`
+  - `userContext` can include: `name`, `neverUsedCrypto`, `neverSentGiftCards`, `typicalContacts[]`, `knownDomains[]`, `locale`.
+  - If `userId` is set and Supabase is configured, the server loads the user profile and overrides `userContext`.
+- **Response:** `{ riskLevel: "low"|"medium"|"high"|"critical", riskScore: number, reasons: string[], explanation: string, recommendedAction: string, detectedLanguage?: string }`
 
 Example:
 
